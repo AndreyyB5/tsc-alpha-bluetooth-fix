@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TSC Alpha-40L Bluetooth fix</title>
+<meta name="description" content="Firmware M2.01.002 drives the Bluetooth module of the TSC Alpha-40L at the wrong speed: it connects but prints nothing. Fix the official firmware file right in your browser.">
+<style>
+:root {
+  --bg: #f6f7f5; --card: #ffffff; --ink: #1b1d1b; --muted: #5d625e; --line: #dfe3df;
+  --accent: #2e7d52; --accent-ink: #ffffff; --accent-soft: #e5f1ea; --warn: #9a5b00; --warn-soft: #fbf1e1;
+  --bad: #b3261e; --bad-soft: #fbe9e7; --code: #eef1ee; --screen: #201810;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121412; --card: #1b1e1c; --ink: #e8ebe8; --muted: #a3a9a4; --line: #2d322e;
+    --accent: #4fb07a; --accent-ink: #0d1a12; --accent-soft: #1d3326; --warn: #f0b45c; --warn-soft: #33281a;
+    --bad: #f2867e; --bad-soft: #3a1f1d; --code: #232724;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 880px; margin: 0 auto; padding: 28px 16px 64px; }
+header { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+h1 { font-size: 30px; line-height: 1.15; margin: 8px 0 6px; letter-spacing: -0.4px; }
+h2 { font-size: 19px; margin: 0 0 10px; display: flex; align-items: center; gap: 10px; }
+.lead { color: var(--muted); margin: 0 0 22px; max-width: 640px; }
+.lang { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--card); }
+.lang button { border: 0; background: none; color: var(--muted); font-family: inherit; font-weight: 600; font-size: 13px; line-height: 1; padding: 8px 12px; cursor: pointer; }
+.lang button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin: 14px 0; }
+.num { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: inline-grid; place-items: center; font-size: 14px; flex: none; }
+.muted { color: var(--muted); }
+code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13.5px; }
+code { background: var(--code); padding: 1px 6px; border-radius: 6px; overflow-wrap: anywhere; }
+.drop { display: block; border: 2px dashed var(--line); border-radius: 14px; padding: 26px 16px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop input { display: none; }
+.status { margin-top: 12px; padding: 10px 12px; border-radius: 10px; display: none; }
+.status.ok { display: block; background: var(--accent-soft); }
+.status.warn { display: block; background: var(--warn-soft); color: var(--warn); }
+.status.bad { display: block; background: var(--bad-soft); color: var(--bad); }
+.opt { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line); }
+.opt:first-of-type { border-top: 0; }
+.opt input[type="checkbox"] { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+.opt label { cursor: pointer; }
+.opt .hint { display: block; color: var(--muted); font-size: 14px; }
+.logo-choice { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0 0 32px; font-size: 15px; }
+.logo-choice input { accent-color: var(--accent); }
+.preview { margin: 14px 0 0 32px; }
+.preview canvas { width: 100%; max-width: 480px; aspect-ratio: 4 / 3; image-rendering: pixelated; border-radius: 10px; border: 6px solid #2b2b2b; background: var(--screen); display: block; }
+.btn { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 12px; padding: 13px 20px; font-family: inherit; font-weight: 700; font-size: 16px; line-height: 1; background: var(--accent); color: var(--accent-ink); cursor: pointer; text-decoration: none; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.result { margin-top: 14px; display: none; }
+.result.show { display: block; }
+ol, ul { padding-left: 22px; margin: 6px 0; }
+li { margin: 4px 0; }
+.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+.shots figure { margin: 0; }
+.shots img { width: 100%; border-radius: 8px; border: 5px solid #2b2b2b; image-rendering: pixelated; display: block; }
+.shots figcaption { font-size: 13px; color: var(--muted); margin-top: 6px; text-align: center; }
+footer { color: var(--muted); font-size: 14px; margin-top: 28px; }
+a { color: var(--accent); }
+@media (max-width: 560px) { h1 { font-size: 25px; } .logo-choice, .preview { margin-left: 0; } .shots { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <div class="muted mono">TSC Alpha-40L · M2.01.002 EZC</div>
+      <h1 data-i="title">Bluetooth fix for TSC Alpha‑40L</h1>
+    </div>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="ru" aria-pressed="false">RU</button>
+    </div>
+  </header>
+  <p class="lead" data-i="lead">After the update to M2.01.002 the printer pairs over Bluetooth but prints nothing: the firmware drives the Bluetooth module at 1&nbsp;000&nbsp;000 baud while the module works at 115&nbsp;200. This page fixes TSC's official firmware file — on your computer, nothing is uploaded.</p>
+
+  <section class="card">
+    <h2><span class="num">1</span><span data-i="s1">Get the official firmware</span></h2>
+    <p data-i="s1t">Download it from TSC: tscprinters.com → Support → Downloads → Alpha-40L → Firmware. You need exactly this file:</p>
+    <p><code>ALPHA40L_EZC_M2.01.002.NEW</code> · 3&nbsp;604&nbsp;516 <span data-i="bytes">bytes</span><br>
+    <span class="muted">SHA-256</span> <code>152e5a55a991e8e3f0466eedc9c6a5ae850e2eac0b788e953fe66ef8d3f63329</code></p>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">2</span><span data-i="s2">Open it here</span></h2>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept=".NEW,.new">
+      <strong data-i="drop">Drop the .NEW file here or click to choose it</strong><br>
+      <span class="muted" data-i="local">It stays on this computer.</span>
+    </label>
+    <div class="status" id="status" role="status"></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">3</span><span data-i="s3">Choose what to include</span></h2>
+    <div class="opt">
+      <input type="checkbox" id="fix" checked disabled>
+      <label for="fix"><strong data-i="o1">Bluetooth fix</strong><span class="hint" data-i="o1h">3 bytes of code: the module is opened at 115 200 baud, as it is configured. Always on.</span></label>
+    </div>
+    <div class="opt">
+      <input type="checkbox" id="dual" checked>
+      <label for="dual"><strong data-i="o2">Bluetooth Dual mode</strong><span class="hint" data-i="o2h">Classic and Bluetooth LE at the same time (iPhone apps need LE). The printer menu offers only one of them; Dual is set by a command.</span></label>
+    </div>
+    <div class="opt">
+      <input type="checkbox" id="logo" checked>
+      <label for="logo"><strong data-i="o3">Home-screen logo instead of “Ready”</strong><span class="hint" data-i="o3h">Stored as /system/LOGO.LCD; the status word is no longer shown. Remove with KILL S,"LOGO.LCD".</span></label>
+    </div>
+    <div class="logo-choice" id="logoChoice">
+      <label><input type="radio" name="logoSrc" value="marker" checked> <span data-i="lm">Marker logo</span></label>
+      <label><input type="radio" name="logoSrc" value="own"> <span data-i="lo">My image</span></label>
+      <input type="file" id="logoFile" accept="image/*,.bmp" hidden>
+    </div>
+    <div class="preview" id="previewBox"><canvas id="preview" width="320" height="240" aria-label="Printer screen preview"></canvas></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">4</span><span data-i="s4">Build the file</span></h2>
+    <button class="btn" id="build" disabled data-i="build">Build firmware file</button>
+    <div class="result" id="result">
+      <p><a class="btn" id="download" download href="#" data-i="download">Download</a></p>
+      <p class="muted"><span data-i="fwsha">Firmware part SHA-256 (must match the tested file):</span><br><code id="outsha"></code></p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">5</span><span data-i="s5">Send it to the printer</span></h2>
+    <ul>
+      <li data-i="w1">Windows: TSC DiagTool → File Manager → file type “Firmware File” → Download. Or printer driver → Printer properties → Tools → Send File To Printer.</li>
+      <li data-i="w2">macOS / Linux: <code>python3 tools/tsc_usb.py send FILE</code> from this repository.</li>
+      <li data-i="w3">The printer checks the file, writes it and restarts by itself (about 20 seconds). Do not turn it off.</li>
+      <li data-i="w4">Check: send <code>OUT PEEK32(539941872)</code> — the fixed firmware answers <code>3818916103</code>.</li>
+    </ul>
+    <div class="shots">
+      <figure><img src="assets/screen-ready.png" alt="Original home screen"><figcaption data-i="f1">Before: “Ready”, Bluetooth prints nothing</figcaption></figure>
+      <figure><img src="assets/screen-logo.png" alt="Home screen with the Marker logo"><figcaption data-i="f2">After: Bluetooth works, logo on the screen (real screenshot)</figcaption></figure>
+    </div>
+  </section>
+
+  <footer>
+    <p data-i="foot">Tested on an Alpha-40L with a BM78 Bluetooth module (check: <code>OUT GETSETTING$("CONFIG","BT","MODULE")</code> → <code>BM78 MFi</code>). Alpha-30L has the same bug; its patch is being tested. Not affiliated with TSC. The firmware belongs to TSC and is not hosted here. Use at your own risk.</p>
+    <p><a href="https://github.com/AndreyyB5/tsc-alpha-bluetooth-fix">GitHub</a> · <a href="https://github.com/AndreyyB5/tsc-alpha-bluetooth-fix/blob/main/docs/technical.md" data-i="tech">How it was found</a> · MIT</p>
+  </footer>
+</main>
+
+<script type="module">
+import { sha256Hex, findPatch, applyEdits, checkBmp, bmpFromRGBA, build, LOGO_SIZE, SCREEN_BG } from './patcher.mjs';
+
+const RU = {
+  title: 'Починка Bluetooth для TSC Alpha‑40L',
+  lead: 'После обновления до M2.01.002 принтер сопрягается по Bluetooth, но ничего не печатает: прошивка открывает модуль Bluetooth на 1 000 000 бод, а модуль работает на 115 200. Эта страница исправляет официальный файл прошивки TSC прямо на вашем компьютере, ничего никуда не загружается.',
+  s1: 'Скачайте официальную прошивку',
+  s1t: 'С сайта TSC: tscprinters.com → Support → Downloads → Alpha-40L → Firmware. Нужен именно этот файл:',
+  bytes: 'байт',
+  s2: 'Откройте его здесь', drop: 'Перетащите сюда файл .NEW или нажмите, чтобы выбрать', local: 'Файл остаётся на этом компьютере.',
+  s3: 'Что включить в файл',
+  o1: 'Починка Bluetooth', o1h: '3 байта кода: модуль открывается на 115 200 бод, как он настроен. Включено всегда.',
+  o2: 'Bluetooth в режиме Dual', o2h: 'Обычный Bluetooth и Bluetooth LE одновременно (приложениям на iPhone нужен LE). В меню принтера можно выбрать только один из них, Dual включается командой.',
+  o3: 'Логотип на главном экране вместо «Ready»', o3h: 'Хранится как /system/LOGO.LCD, слово состояния больше не показывается. Убрать: KILL S,"LOGO.LCD".',
+  lm: 'Логотип Marker', lo: 'Своя картинка',
+  s4: 'Соберите файл', build: 'Собрать файл прошивки', download: 'Скачать',
+  fwsha: 'SHA-256 части с прошивкой (должна совпасть с проверенным файлом):',
+  s5: 'Отправьте его в принтер',
+  w1: 'Windows: TSC DiagTool → File Manager → тип файла «Firmware File» → Download. Или драйвер принтера → Свойства принтера → Tools → Send File To Printer.',
+  w2: 'macOS / Linux: <code>python3 tools/tsc_usb.py send ФАЙЛ</code> из этого репозитория.',
+  w3: 'Принтер проверит файл, запишет его и сам перезагрузится (около 20 секунд). Не выключайте его.',
+  w4: 'Проверка: отправьте <code>OUT PEEK32(539941872)</code> — исправленная прошивка отвечает <code>3818916103</code>.',
+  f1: 'До: «Ready», по Bluetooth ничего не печатается', f2: 'После: Bluetooth работает, на экране логотип (настоящий снимок)',
+  foot: 'Проверено на Alpha-40L с модулем Bluetooth BM78 (проверка: <code>OUT GETSETTING$("CONFIG","BT","MODULE")</code> → <code>BM78 MFi</code>). У Alpha-30L та же ошибка, её правка проверяется. Проект не связан с TSC. Прошивка принадлежит TSC и здесь не хранится. Используйте на свой риск.',
+  tech: 'Как это нашли',
+  ok: (p) => `Официальный файл ${p.model} ${p.firmware} — подходит.`,
+  fixed: 'Этот файл уже исправлен. Возьмите официальный файл TSC.',
+  unknown: (sha) => `Неизвестный файл (SHA-256 ${sha}). Нужен официальный ALPHA40L_EZC_M2.01.002.NEW.`,
+  badlogo: (e) => `Картинка не подошла: ${e}`,
+};
+const EN = {};
+document.querySelectorAll('[data-i]').forEach((el) => { EN[el.dataset.i] = el.innerHTML; });
+Object.assign(EN, {
+  ok: (p) => `Official ${p.model} ${p.firmware} file — supported.`,
+  fixed: 'This file is already fixed. Use the official TSC file.',
+  unknown: (sha) => `Unknown file (SHA-256 ${sha}). You need the official ALPHA40L_EZC_M2.01.002.NEW.`,
+  badlogo: (e) => `This image does not work: ${e}`,
+});
+let T = EN;
+function setLang(lang) {
+  T = lang === 'ru' ? RU : EN;
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i]').forEach((el) => { if (typeof T[el.dataset.i] === 'string') el.innerHTML = T[el.dataset.i]; });
+  document.querySelectorAll('[data-lang]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
+  try { localStorage.setItem('lang', lang); } catch {}
+  showStatus();
+}
+document.querySelectorAll('[data-lang]').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang)));
+
+const $ = (id) => document.getElementById(id);
+let patches = [];
+let firmware = null; let firmwareName = '';
+let status = null;
+let logoBmp = null;
+
+function showStatus() {
+  const el = $('status');
+  el.className = 'status';
+  if (!status) { el.textContent = ''; return; }
+  el.classList.add(status.kind);
+  el.textContent = typeof T[status.key] === 'function' ? T[status.key](status.arg) : T[status.key];
+}
+
+async function loadPatches() {
+  const index = await (await fetch('patches/index.json')).json();
+  patches = await Promise.all(index.patches.map(async (n) => (await fetch(`patches/${n}`)).json()));
+}
+
+async function openFirmware(file) {
+  $('result').classList.remove('show');
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const sha = await sha256Hex(bytes);
+  const hit = findPatch(sha, patches);
+  firmware = null;
+  if (!hit) status = { kind: 'bad', key: 'unknown', arg: sha };
+  else if (hit.state === 'fixed') status = { kind: 'warn', key: 'fixed' };
+  else { firmware = { bytes, patch: hit.patch }; firmwareName = file.name; status = { kind: 'ok', key: 'ok', arg: hit.patch }; }
+  showStatus();
+  $('build').disabled = !firmware;
+}
+
+const drop = $('drop');
+$('file').addEventListener('change', (e) => e.target.files[0] && openFirmware(e.target.files[0]));
+drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) openFirmware(e.dataTransfer.files[0]); });
+
+// Logo: the printer centres it horizontally at x = 160 and puts its top at y = 60.
+const screenImg = new Image(); screenImg.src = 'assets/screen.png';
+async function imageToBmp(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  try { checkBmp(bytes); return bytes; } catch {}
+  const img = await createImageBitmap(file);
+  const c = document.createElement('canvas'); c.width = LOGO_SIZE.width; c.height = LOGO_SIZE.height;
+  const g = c.getContext('2d');
+  g.fillStyle = `rgb(${SCREEN_BG.join(',')})`; g.fillRect(0, 0, c.width, c.height);
+  const k = Math.min(304 / img.width, 130 / img.height);
+  const w = Math.round(img.width * k); const h = Math.round(img.height * k);
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(img, Math.round((c.width - w) / 2), Math.round((c.height - h) / 2), w, h);
+  return bmpFromRGBA(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+}
+function bmpToCanvas(bmp) {
+  const { width, height } = checkBmp(bmp);
+  const c = document.createElement('canvas'); c.width = width; c.height = height;
+  const g = c.getContext('2d'); const d = g.createImageData(width, height);
+  const row = (width * 3 + 3) & ~3;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const s = 54 + (height - 1 - y) * row + x * 3; const t = (y * width + x) * 4;
+    d.data[t] = bmp[s + 2]; d.data[t + 1] = bmp[s + 1]; d.data[t + 2] = bmp[s]; d.data[t + 3] = 255;
+  }
+  g.putImageData(d, 0, 0); return c;
+}
+function drawPreview() {
+  const g = $('preview').getContext('2d');
+  g.imageSmoothingEnabled = false;
+  if (screenImg.complete) g.drawImage(screenImg, 0, 0);
+  const on = $('logo').checked && logoBmp;
+  if (on) { const c = bmpToCanvas(logoBmp); g.drawImage(c, Math.round(160 - c.width / 2), 60); }
+  else { g.fillStyle = '#fff'; g.font = '34px -apple-system, Arial, sans-serif'; g.textAlign = 'center'; g.fillText('Ready', 160, 134); }
+}
+screenImg.onload = drawPreview;
+async function useMarkerLogo() { logoBmp = new Uint8Array(await (await fetch('assets/marker-logo.bmp')).arrayBuffer()); drawPreview(); }
+document.querySelectorAll('input[name="logoSrc"]').forEach((r) => r.addEventListener('change', () => {
+  if (r.value === 'own' && r.checked) $('logoFile').click();
+  if (r.value === 'marker' && r.checked) useMarkerLogo();
+}));
+$('logoFile').addEventListener('change', async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try { logoBmp = await imageToBmp(f); drawPreview(); }
+  catch (err) { status = { kind: 'bad', key: 'badlogo', arg: err.message }; showStatus(); }
+});
+$('logo').addEventListener('change', () => { $('logoChoice').style.opacity = $('logo').checked ? 1 : .4; drawPreview(); });
+
+$('build').addEventListener('click', async () => {
+  const fixed = applyEdits(firmware.bytes, firmware.patch);
+  const sha = await sha256Hex(fixed);
+  if (sha !== firmware.patch.output.sha256) throw new Error('result does not match the tested file');
+  const out = build({ firmware: fixed, dual: $('dual').checked, logo: $('logo').checked ? logoBmp : null });
+  const url = URL.createObjectURL(new Blob([out], { type: 'application/octet-stream' }));
+  const a = $('download'); a.href = url;
+  a.download = firmwareName.replace(/\.new$/i, '') + '_BTFIX.NEW';
+  $('outsha').textContent = sha;
+  $('result').classList.add('show');
+});
+
+let lang = 'en';
+try { lang = localStorage.getItem('lang') || (navigator.language || '').slice(0, 2); } catch {}
+setLang(lang === 'ru' ? 'ru' : 'en');
+await loadPatches();
+await useMarkerLogo();
+</script>
+</body>
+</html>

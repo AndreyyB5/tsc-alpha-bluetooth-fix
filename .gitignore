@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.NEW
+*.new
+*.prn
+*.bin
+.DS_Store
+/.claude/

@@ -1,0 +1,56 @@
+{
+  "id": "alpha-40l-m2.01.002",
+  "model": "TSC Alpha-40L",
+  "firmware": "M2.01.002 EZC",
+  "official_file": "ALPHA40L_EZC_M2.01.002.NEW",
+  "input": {
+    "size": 3604516,
+    "sha256": "152e5a55a991e8e3f0466eedc9c6a5ae850e2eac0b788e953fe66ef8d3f63329"
+  },
+  "output": {
+    "size": 3604516,
+    "sha256": "18dd03667cd3d85812c341150319287ff63cb030f0db9061a6812e95cf61f1e1"
+  },
+  "edits": [
+    {
+      "offset": 32,
+      "from": "38",
+      "to": "37"
+    },
+    {
+      "offset": 34,
+      "from": "32",
+      "to": "35"
+    },
+    {
+      "offset": 36,
+      "from": "5ef4",
+      "to": "60f3"
+    },
+    {
+      "offset": 775495,
+      "from": "f40a",
+      "to": "0709"
+    },
+    {
+      "offset": 775499,
+      "from": "90",
+      "to": "80"
+    }
+  ],
+  "change": {
+    "function": "bt_enter_app_mode",
+    "address": "0x202EDBF0",
+    "before": "f40aa0e3900f80e3",
+    "after": "0709a0e3800f80e3",
+    "asm_before": "mov r0, #0xF4000 ; orr r0, r0, #0x240   @ 1000000 baud",
+    "asm_after": "mov r0, #0x1C000 ; orr r0, r0, #0x200   @ 115200 baud"
+  },
+  "check": {
+    "command": "OUT PEEK32(539941872)",
+    "fixed": "3818916103",
+    "original": "3818916596"
+  },
+  "logo": true,
+  "tested": "2026-11-18 on an Alpha-40L with a BM78 module: Bluetooth Classic and Bluetooth LE printing, with and without the logo and Dual-mode options"
+}
