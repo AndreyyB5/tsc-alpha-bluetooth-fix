@@ -1,3 +1,7 @@
 {
-  "patches": ["alpha-40l-m2.01.002.json"]
+  "patches": [
+    "alpha-40l-m2.01.002.json",
+    "alpha-40l-m2.01.002-921600.json",
+    "alpha-30l-m2.01.002.json"
+  ]
 }

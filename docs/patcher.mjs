@@ -23,6 +23,28 @@ export async function sha256Hex(bytes) {
   return toHex(new Uint8Array(digest));
 }
 
+/** Rows of the 138-row logo that stay visible when the Alpha-30L shows its IP address line. */
+export const LOGO_ROWS_30L = 107;
+
+/** Speed code of the BM78 module: byte 1 of the EEPROM word the printer answers to OUT PEEK32(547429728). */
+export function moduleCode(word) {
+  const text = String(word).trim();
+  if (text === '') return null;
+  const n = Number(text);
+  if (!Number.isInteger(n) || n < 0 || n > 0xffffffff) return null;
+  return Math.floor(n / 256) % 256;
+}
+
+/** Every published patch for this official file: one per module speed. */
+export function variantsFor(sha, patches) {
+  return patches.filter((p) => p.input.sha256 === sha);
+}
+
+/** The variant for this module speed code (hex string in the patch file), or null. */
+export function variantForCode(code, variants) {
+  return variants.find((p) => p.module && p.module.speed_code && parseInt(p.module.speed_code, 16) === code) || null;
+}
+
 /** -> { patch, state: 'official' | 'fixed' } or null. */
 export function findPatch(sha, patches) {
   for (const patch of patches) {
@@ -64,6 +86,20 @@ export function checkBmp(bmp) {
   }
   if (bmp.length < 54 + (((width * 3 + 3) & ~3) * height)) throw new Error('the BMP file is truncated');
   return { width, height };
+}
+
+/** True if the logo draws something below the first `rows` rows (covered by the IP address line on the Alpha-30L). */
+export function coveredRows(bmp, rows) {
+  const { width, height } = checkBmp(bmp);
+  const pad = (width * 3 + 3) & ~3;
+  for (let y = rows; y < height; y++) {
+    const at = 54 + (height - 1 - y) * pad;
+    for (let x = 0; x < width; x++) {
+      const [b, g, r] = [bmp[at + x * 3], bmp[at + x * 3 + 1], bmp[at + x * 3 + 2]];
+      if (Math.max(Math.abs(r - SCREEN_BG[0]), Math.abs(g - SCREEN_BG[1]), Math.abs(b - SCREEN_BG[2])) > 12) return true;
+    }
+  }
+  return false;
 }
 
 /** 24-bit bottom-up BMP from canvas RGBA pixels (alpha is ignored: draw on a solid background first). */

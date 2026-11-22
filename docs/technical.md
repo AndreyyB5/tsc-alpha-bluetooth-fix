@@ -1,8 +1,9 @@
 # How the Alpha‑40L Bluetooth bug was found and fixed
 
-Everything below was measured on a TSC Alpha‑40L with a Microchip BM78 module (TSC part RF‑BHS),
-firmware M2.01.002 EZC, over USB with the printer's own service commands. Addresses are valid for
-this firmware only.
+Everything below was measured on two TSC Alpha‑40L with Microchip BM78 modules (TSC part RF‑BHS) and
+one Alpha‑30L with a Lantronix xPico270, firmware M2.01.002 EZC, over USB (the 30L also over its Wi‑Fi
+port 9100) with the printers' own service commands. Addresses are valid for this firmware only, and
+differ between the two models.
 
 ## 1. Symptom
 
@@ -10,14 +11,16 @@ this firmware only.
 - Nothing prints. With Bluetooth dump enabled the printer receives only `0x00` bytes.
 - Sending 69 bytes produced **exactly 212 zero bytes** — the number of falling edges in those 69
   bytes at 115 200 baud. The CPU samples the line far too fast and turns every low pulse into a byte.
+- A second printer of the same model, with the same firmware and module, was **not** cured by the first
+  fix: after it the module's data arrived as random bytes, not zeros (§3).
 
 ## 2. Hardware in one paragraph
 
 The CPU is a Microchip SAM9X60 (ARM926). The firmware runs from RAM at `0x20000000`. The BM78 sits on
 FLEXCOM3 USART `0xF8028200` (MR `+0x04`, BRGR `+0x20`, RTOR `+0x24`), hardware handshake on, receive by
 DMA (XDMAC channel 14) with a receiver time‑out. Master clock: 196 607 999 Hz. PC17 selects the
-module's setup (EEPROM) mode, PC30 resets it. The module's UART speed is its EEPROM byte `0x31`
-(`03` = 115 200).
+module's setup (EEPROM) mode, PC30 resets it. The module keeps its UART speed in its own EEPROM, byte `0x31`: `03` = 115 200,
+`11` = 921 600. **It differs between printers of the same model** — read it, do not assume it (§3).
 
 ## 3. Root cause
 
@@ -26,16 +29,30 @@ module's setup (EEPROM) mode, PC30 resets it. The module's UART speed is its EEP
 | `bt_enter_eeprom_mode` — firmware configures the module | `0x202EDC64` | 115 200 |
 | `bt_enter_app_mode` — firmware opens the module for printing | `0x202EDBA4` | **1 000 000** |
 
-The firmware also writes `0x31 = 03` (115 200) into the module during setup — then opens it for
-printing at 1 000 000. With this clock BRGR becomes 12, which is 1 024 000 baud. The BM78 cannot run
-at that speed at all (its nearest preset, «921 600», is really 941 176 = 16 MHz / 17).
+With this clock BRGR becomes 12, which is 1 024 000 baud. The BM78 runs at the speed in its own EEPROM
+and at nothing else (its «921 600» preset is really 941 176 = 16 MHz / 17). An earlier version of this
+page said the firmware writes `0x31 = 03` during setup — **wrong**: neither M2.01.002 nor B1.15 writes
+that byte, so whatever the module came with stays:
+
+| | Printer A | Printer B |
+|---|---|---|
+| EEPROM byte `0x31` | `03` = 115 200 | `11` = 921 600 |
+| M2.01.002 as shipped (1 024 000) | zeros only | nothing printed (not dumped) |
+| 115 200 firmware variant | works | random bytes, nothing prints |
+| 921 600 firmware variant (BRGR 13 → 945 230 baud, 0.4 % off) | — | works |
+
+Reading the byte on a running printer: the firmware keeps a RAM copy of the EEPROM, so
+`OUT PEEK32(547429728)` (address `0x20A11D60` = copy + `0x30`) answers one word; byte 1 of it is `0x31`.
+`3205173505` = `0xBF0B1101` → `0x11`.
 
 Proof:
 
 1. `OUT PEEK32(4160913952)` (BRGR) read 12.
 2. `POKE32 4160913952,106` (115 924 baud, 0.6 % off) — bytes arrived intact; a 12 603‑byte job came
    through byte‑identical and printed.
-3. On every reconnect the firmware set 1 000 000 again (through a function pointer at `0x228A3300`),
+3. On printer B the same POKE left garbage; `POKE32 4160913952,13` (945 230 baud) with the matching
+   time‑out made a 15 430‑byte job arrive intact and print.
+4. On every reconnect the firmware set 1 000 000 again (through a function pointer at `0x228A3300`),
    so the fix has to be in the firmware itself or re‑applied at start (`AUTO.BAS`).
 
 ## 4. The patch
@@ -44,15 +61,23 @@ Proof:
 0x202EDBF0   f4 0a a0 e3   mov r0, #0xF4000          (original)
 0x202EDBF4   90 0f 80 e3   orr r0, r0, #0x240        → 1 000 000
 
-0x202EDBF0   07 09 a0 e3   mov r0, #0x1C000          (fixed)
+0x202EDBF0   07 09 a0 e3   mov r0, #0x1C000          (module code 03)
 0x202EDBF4   80 0f 80 e3   orr r0, r0, #0x200        → 115 200
+
+0x202EDBF0   e1 0a a0 e3   mov r0, #0xE1000          (module code 11)
+0x202EDBF4   00 0f 80 e3   orr r0, r0, #0            → 921 600
 ```
+
+Both variants change the same instruction pair of the same official file; `docs/patches/` holds one
+definition per module speed. The check word is the first instruction: `OUT PEEK32(539941872)` →
+`3818916103` (115 200), `3818916577` (921 600), `3818916596` (original).
 
 Why this encoding and not the one the firmware uses elsewhere (`mov r0,#0x10000; orr r0,#0xC200`):
 in TSC's compressed stream these 8 bytes are literals, but a later match copies the byte at
 `0x202EDBF5`. This encoding keeps that byte (`0x0F`) and changes only three literal bytes, so no
 compression token moves: same file length, same structure, 7 bytes different in total (3 code bytes,
-the checksum in the header text and the inner checksum).
+the checksum in the header text and the inner checksum). The 921 600 encoding keeps the same byte and
+needs only 2 code bytes.
 
 ## 5. Firmware file format
 
@@ -93,7 +118,10 @@ script checks model, firmware and that `0x2041E4EC` still holds `bx lr`, then:
 | `0xF8028224` | 3 456 | receiver time‑out for this speed (30 ms) |
 
 The set is applied twice, 3 s apart, because the firmware re‑initialises the module while starting.
-RAM only: a restart without the file brings the original behaviour back.
+RAM only: a restart without the file brings the original behaviour back. It is meant for modules at
+115 200 (code `03`); `tools/tsc_usb.py autobas` refuses to install it on others. A 921 600 module needs
+BRGR 13 and the time‑out 28 356 (30 ms at 945 230 baud) — the same POKEs with those numbers worked by
+hand, but that script has not been run from power‑on.
 
 ## 7. Bluetooth modes and connections
 
@@ -102,6 +130,8 @@ RAM only: a restart without the file brings the original behaviour back.
   `BT MODE "Dual"` is ignored) sets the third one.
 - The firmware copies the mode into module EEPROM `0x1AF` **at start‑up only**: bit `0x40` = classic
   only, bit `0x20` = LE only, neither = Dual. Restart after changing it.
+- **Flashing reset the mode to BT4.0 (LE only)** on the Alpha‑40L we measured: it was Dual before the
+  flash and BT4.0 after the restart. Set it again after every flash.
 - The module keeps one connection. A phone paired in its system settings holds it all the time and
   locks everyone else out («printer does not answer»).
 
@@ -135,6 +165,7 @@ The home screen (`0x203D2F30`) draws `/system/LOGO.LCD` if it exists and then sk
 
 - 24‑bit uncompressed BMP, 54‑byte header, bottom‑up rows, up to 320 × 140;
 - centred at x = 160, top at y = 60 of the 320 × 200 home canvas (RGB565);
+- on the Alpha‑30L the IP address line fills canvas rows 167–199 and hides BMP rows 107–137 (§12);
 - background colour `0x20C2` = RGB 32, 24, 16;
 - read at start‑up only.
 
@@ -182,7 +213,44 @@ Remove: `KILL S,"LOGO.LCD"` and restart. Never send `KILL S,"*"`.
 
 ## 12. Alpha‑30L
 
-`ALPHA30L_EZC_M2.01.002.NEW` (SHA‑256 `98636b38…728fa4`) contains the same function: 73 of 80 words
-are identical, only call offsets differ. The 1 000 000 constant is at `0x201D097C`, and the same
-encoding again changes only three literal bytes. It will be published here after it is tested on a
-real Alpha‑30L.
+`ALPHA30L_EZC_M2.01.002.NEW` (3 080 228 bytes, SHA‑256 `98636b38…ea728fa4`) is tagged `FuseA40L` like the
+40L file. `tscfw.py` unpacks it and finds the same `bt_enter_app_mode` with the 1 000 000 constant at
+`0x201D097C` (73 of 80 words identical) — for a **BM78** Alpha‑30L the 40L patch would apply, but we had
+none to test. The Alpha‑30L we had has an **xPico270** (Lantronix Wi‑Fi + Bluetooth) and no speed bug.
+
+### How the printer talks to the xPico270
+
+- FLEXCOM3 (USART `0xF8028200`), 115 200 baud, hardware flow control. The xPico's line runs Lantronix's
+  **Mux** protocol: the printer sends short commands (`1v1` → Trouble Log on channel 1, `2v2` → command line
+  on channel 2, `3lSPP_1` / `4lGATTS_TSC` → bind channels, `3x\d0010@+@` → transparent mode on a channel)
+  and reads `K` / `E …` answers and polls (`1r`, `3r`, `4r` = data on that channel).
+- The module's settings are pushed as XML records (`<configgroup name="Bluetooth">…`,
+  `GATT Server Custom Service "TSC"` with `…8841` writable and `…1E4D` readable).
+- The printer reads the module's Trouble Log line by line and keeps one byte per event in the state block
+  at `0x208958E0` (`+0x70`…`+0x77`: re‑bind request, GATT ready, SPP started, GATT registered, GATT
+  bound, SPP bound, –, linked). Only «Started SPP» makes it bind `SPP_1`.
+- **The ring buffer of everything the module sent** is at `0x2236A654` (start `+0x2C`, end `+0x30`, read
+  `+0x38`, count `+0x3C`, 16 KB). Reading it back over USB shows every answer and log line — the most useful
+  tool for this module. `DUMP_BT` does not work for the xPico path (it reports only `01` bytes).
+
+### What we saw (module firmware 5.2.1.0R5)
+
+- Start‑up: the module reports `HCI is up`, `Registered GATT server`, `Trouble Log started on Line:Virtual_1`,
+  `Command Line started on Line:Virtual_2` — but never `Started SPP`, so classic Bluetooth stays unbound.
+- Forcing the bind (`POKE32` on the state block) sends `3lSPP_1`; the module answers
+  `E Invalid line name`. Classic Bluetooth (SPP) therefore does not work on this module with this
+  printer firmware.
+- A phone that connected over LE produced `GATT client connected`. Channel 4 was already bound to
+  `GATTS_TSC` (`E Connection instance already in use` on a second bind), but **no `4r` (data) ever came**
+  during that connection. The app wrote somewhere else, or not at all; the printer side waits correctly.
+  Not verified: that a write to `…8841` prints.
+- The printer was in BT4.0 (LE only) before `BT MODE Dual`.
+
+### The home screen and the logo
+
+The Wi‑Fi address line fills rows 167–199 of the 320 × 200 home canvas with the background colour and
+covers BMP rows 107–137 of a 138‑row logo. Read from RAM: canvas pointer at `0x20884228 + 0x918`
+(first word `width | height << 16`, then RGB565 pixels; the 40L uses `0x20A035A0 + 0x918`), the logo height
+is the word at `+0x944`. The logo is drawn at x = 160, top y = 60, as on the 40L.
+`docs/assets/marker-logo-30l.bmp` keeps its picture in rows 6–104.
+

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Talk to a TSC printer over USB from macOS or Linux (libusb, no driver).
 
-    python3 tools/tsc_usb.py info                 model, firmware, Bluetooth module and mode, fix status
+    python3 tools/tsc_usb.py info                 model, firmware, Bluetooth module, its speed and mode, fix status
     python3 tools/tsc_usb.py send FILE            send a file (firmware, logo, ...) and wait for the restart
+                                                  (a firmware file for another model or module speed is refused;
+                                                  --force sends it anyway)
     python3 tools/tsc_usb.py cmd 'OUT GETSETTING$("CONFIG","BT","MODULE")'
     python3 tools/tsc_usb.py btmode Dual          Dual | BT2.1 | BT3.0 | BT4.0, then restart (applied at power-on)
     python3 tools/tsc_usb.py autobas              install tools/AUTO.BAS (the no-reflash fix)
@@ -22,6 +24,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+import patch as patcher  # noqa: E402
+
 TSC_VENDOR = 0x1203
 EP_OUT = int(os.environ.get("TSC_EP_OUT", "0x01"), 0)
 EP_IN = int(os.environ.get("TSC_EP_IN", "0x82"), 0)
@@ -145,22 +150,64 @@ class Printer:
 
 def _setting(p: Printer, group: str, key: str) -> str:
     section = "SYSTEM" if group == "INFORMATION" else "CONFIG"
-    return p.ask(f'OUT GETSETTING$("{section}","{group}","{key}")')
+    for _ in range(3):      # the first answer after opening the port is sometimes lost
+        value = p.ask(f'OUT GETSETTING$("{section}","{group}","{key}")')
+        if value:
+            return value
+        time.sleep(0.2)
+    return ""
+
+
+def _published(model: str, version: str) -> list:
+    """Published patches for this model and firmware (one per module speed)."""
+    return [x for x in patcher.load_patches()
+            if x["model"].endswith(model) and x["firmware"].startswith("M" + version)]
+
+
+def _module_code(p: Printer, patches: list):
+    """Speed code of the BM78 module, or None if this model or firmware does not have it."""
+    cmd = next((x["module_check"]["command"] for x in patches if x.get("module_check")), None)
+    if cmd is None:
+        return None
+    try:
+        return patcher.module_code(int(p.ask(cmd)))
+    except ValueError:
+        return None
 
 
 def _fix_status(p: Printer, model: str, version: str) -> str:
-    index = json.loads((ROOT / "docs/patches/index.json").read_text())
-    for name in index["patches"]:
-        patch = json.loads((ROOT / "docs/patches" / name).read_text())
-        if patch["model"].endswith(model) and patch["firmware"].startswith("M" + version):
-            value = p.ask(patch["check"]["command"])
-            if value == patch["check"]["fixed"]:
-                return "fixed firmware"
-            if value == patch["check"]["original"]:
-                autobas = p.ask('OUT LOF("AUTO.BAS")')
-                return "original firmware" + (" + AUTO.BAS" if autobas not in ("", "0") else "")
-            return f"unknown ({value})"
-    return "no patch for this model/firmware yet"
+    patches = _published(model, version)
+    if not patches:
+        return "no patch for this model/firmware yet"
+    value = p.ask(patches[0]["check"]["command"])
+    if patches[0]["change"] is None:                     # no firmware change needed (Alpha-30L): only the mode matters
+        return "no firmware change needed" + (
+            "" if value == patches[0]["check"]["fixed"] else f"; Bluetooth mode is {value}, run: btmode Dual")
+    for x in patches:
+        if value == x["check"]["fixed"]:
+            return f"fixed firmware ({x['variant']} module speed)"
+    if value == patches[0]["check"]["original"]:
+        autobas = p.ask('OUT LOF("AUTO.BAS")')
+        return "original firmware" + (" + AUTO.BAS" if autobas not in ("", "0") else "")
+    return f"unknown ({value})"
+
+
+def _advice(p: Printer, model: str, version: str, code, fix: str) -> list:
+    """Plain words for the two situations behind «pairs but prints nothing»."""
+    out = []
+    patches = _published(model, version)
+    mode = _setting(p, "BT", "MODE")
+    if mode == "BT4.0":
+        out.append("Bluetooth mode is BT4.0 (LE only): apps that print over Bluetooth Classic get nothing - "
+                   "run: btmode Dual")
+    if code is not None:
+        want = patcher.variant_for_code(patches, model, "M" + version, code)
+        if want is None:
+            out.append(f"module speed code {code:#04x} has no published firmware variant")
+        elif f"({want['variant']} module speed)" not in fix:
+            out.append(f"this module needs the {want['variant']} variant: "
+                       f"python3 patch.py {want['official_file']} --speed {want['variant']}")
+    return out
 
 
 def info():
@@ -169,9 +216,16 @@ def info():
         print(f"model       {model}")
         print(f"firmware    {version}")
         print(f"bt module   {_setting(p, 'BT', 'MODULE')}")
+        code = _module_code(p, _published(model, version))
+        if code is not None:
+            speeds = {0x03: "115200", 0x11: "921600"}
+            print(f"bt speed    {speeds.get(code, 'unknown')} (module code {code:#04x})")
         print(f"bt mode     {_setting(p, 'BT', 'MODE')}")
         print(f"bt name     {_setting(p, 'BT', 'NAME')}")
-        print(f"fix         {_fix_status(p, model, version)}")
+        fix = _fix_status(p, model, version)
+        print(f"fix         {fix}")
+        for line in _advice(p, model, version, code, fix):
+            print(f"note        {line}")
 
 
 def wait_restart(limit_s: int = 600):
@@ -189,12 +243,37 @@ def wait_restart(limit_s: int = 600):
     print("printer did not restart; if it was a firmware file, check the screen")
 
 
-def send(path: str):
+def _check_before_send(p: Printer, data: bytes) -> str | None:
+    """-> why this firmware file must not go to this printer, or None."""
+    known = patcher.identify(data, patcher.load_patches())
+    if known is None:
+        return ("unknown firmware file: the 30L and 40L files carry the same tag, so the model cannot be checked")
+    patch_, state = known
+    model, version = _setting(p, "INFORMATION", "MODEL"), _setting(p, "INFORMATION", "VERSION")
+    if not patch_["model"].endswith(model):
+        return f"this file is for {patch_['model']}, the printer is {model}"
+    want = patch_.get("module", {}).get("speed_code")
+    if state == "fixed" and want is not None and patch_["edits"]:
+        code = _module_code(p, _published(model, version))
+        if code is not None and code != int(want, 16):
+            right = patcher.variant_for_code(patcher.load_patches(), model, patch_["firmware"], code)
+            hint = f"; build the {right['variant']} variant (--speed {right['variant']})" if right else ""
+            return f"this file is for a module speed code {want}, this module has {code:#04x}{hint}"
+    return None
+
+
+def send(path: str, force: bool = False):
     data = Path(path).read_bytes()
     with Printer() as p:
+        if patcher.firmware_part(data) is not None:
+            problem = _check_before_send(p, data)
+            if problem and not force:
+                raise SystemExit(f"not sent: {problem}. Use --force to send it anyway")
+            if problem:
+                print(f"warning: {problem}")
         print(f"sending {path} ({len(data):,} bytes)")
         p.write(data, progress=True)
-    if b"FuseA" in data[:200_000]:
+    if patcher.firmware_part(data) is not None:
         print("firmware sent: the printer checks it, writes it and restarts by itself - do not unplug")
         wait_restart()
 
@@ -213,6 +292,11 @@ def btmode(mode: str):
 def autobas():
     lines = (ROOT / "tools/AUTO.BAS").read_bytes()
     with Printer() as p:
+        model, version = _setting(p, "INFORMATION", "MODEL"), _setting(p, "INFORMATION", "VERSION")
+        code = _module_code(p, _published(model, version))
+        if code not in (None, 0x03):
+            raise SystemExit(f"AUTO.BAS opens the module at 115200, but this module has speed code {code:#04x}: "
+                             "flash the matching firmware variant instead")
         p.write(b'DOWNLOAD F,"AUTO.BAS"\r\n' + lines.rstrip(b"\r\n") + b"\r\nEOP\r\n")
         time.sleep(1)
         size = p.ask('OUT LOF("AUTO.BAS")')
@@ -227,7 +311,7 @@ def main():
     if cmd == "info":
         info()
     elif cmd == "send" and args:
-        send(args[0])
+        send(next(a for a in args if a != "--force"), force="--force" in args)
     elif cmd == "cmd" and args:
         with Printer() as p:
             for line in args:

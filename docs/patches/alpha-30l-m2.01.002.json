@@ -1,0 +1,30 @@
+{
+  "id": "alpha-30l-m2.01.002",
+  "model": "TSC Alpha-30L",
+  "firmware": "M2.01.002 EZC",
+  "official_file": "ALPHA30L_EZC_M2.01.002.NEW",
+  "suffix": "SETUP",
+  "module": {
+    "name": "xPico270"
+  },
+  "input": {
+    "size": 3080228,
+    "sha256": "98636b3810caaecc056241dbb85ece50a4fcd1182971d0470e90ff2cea728fa4"
+  },
+  "output": {
+    "size": 3080228,
+    "sha256": "98636b3810caaecc056241dbb85ece50a4fcd1182971d0470e90ff2cea728fa4"
+  },
+  "edits": [],
+  "change": null,
+  "check": {
+    "command": "OUT GETSETTING$(\"CONFIG\",\"BT\",\"MODE\")",
+    "fixed": "Dual",
+    "original": "BT4.0"
+  },
+  "logo": true,
+  "logo_file": "assets/marker-logo-30l.bmp",
+  "logo_rows": 107,
+  "screen_file": "assets/screen-30l.png",
+  "tested": "2026-11-22 on an Alpha-30L with an xPico270 module that already runs M2.01.002: the logo and the Dual-mode command were applied to the live printer. The combined file itself was not flashed, and an Alpha-30L with a BM78 module was not available"
+}

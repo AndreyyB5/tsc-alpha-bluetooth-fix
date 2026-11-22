@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  applyEdits, bmpFromRGBA, build, checkBmp, findPatch, fromHex, logoCommands, sha256Hex, toHex,
+  applyEdits, bmpFromRGBA, build, checkBmp, coveredRows, findPatch, fromHex, LOGO_ROWS_30L, logoCommands,
+  moduleCode, sha256Hex, toHex, variantForCode, variantsFor,
 } from '../docs/patcher.mjs';
 
 const root = new URL('../', import.meta.url);
@@ -30,6 +31,35 @@ test('findPatch tells official from already fixed', () => {
   assert.equal(findPatch('a', [p]).state, 'official');
   assert.equal(findPatch('b', [p]).state, 'fixed');
   assert.equal(findPatch('c', [p]), null);
+});
+
+test('one official file, one variant per module speed', () => {
+  const all = json('docs/patches/index.json').patches.map((n) => json(`docs/patches/${n}`));
+  const l40 = all.filter((p) => p.id.startsWith('alpha-40l'));
+  const v = variantsFor(l40[0].input.sha256, all);
+  assert.deepEqual(v.map((p) => p.variant), ['115200', '921600']);
+  assert.equal(variantForCode(0x03, v).variant, '115200');
+  assert.equal(variantForCode(0x11, v).variant, '921600');
+  assert.equal(variantForCode(0x0b, v), null);
+});
+
+test('the module speed code is byte 1 of the printer\'s answer', () => {
+  assert.equal(moduleCode('3205173505'), 0x11); // a real printer whose module runs at 921600
+  assert.equal(moduleCode(0xbf0b0301), 0x03);
+  assert.equal(moduleCode(' 3204646913 '), moduleCode(3204646913));
+  for (const bad of ['', 'abc', '1.5', '-1', '99999999999']) assert.equal(moduleCode(bad), null);
+});
+
+test('the Alpha-30L has no firmware bytes to change and its own logo area', () => {
+  const all = json('docs/patches/index.json').patches.map((n) => json(`docs/patches/${n}`));
+  const l30 = all.find((p) => p.model.endsWith('Alpha-30L'));
+  assert.deepEqual(l30.edits, []);
+  assert.equal(l30.input.sha256, l30.output.sha256);
+  assert.equal(l30.logo_rows, LOGO_ROWS_30L);
+  const logo30 = new Uint8Array(readFileSync(new URL('docs/assets/marker-logo-30l.bmp', root)));
+  const logo40 = new Uint8Array(readFileSync(new URL('docs/assets/marker-logo.bmp', root)));
+  assert.equal(coveredRows(logo30, LOGO_ROWS_30L), false);
+  assert.equal(coveredRows(logo40, LOGO_ROWS_30L), true);
 });
 
 test('sha256 matches the known value', async () => {

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TSC Alpha-40L Bluetooth fix</title>
-<meta name="description" content="Firmware M2.01.002 drives the Bluetooth module of the TSC Alpha-40L at the wrong speed: it connects but prints nothing. Fix the official firmware file right in your browser.">
+<title>TSC Alpha-40L / 30L Bluetooth fix</title>
+<meta name="description" content="TSC Alpha-40L / 30L on firmware M2.01.002 pair over Bluetooth but print nothing. Two causes, one page: fix the official firmware file right in your browser.">
 <style>
 :root {
   --bg: #f6f7f5; --card: #ffffff; --ink: #1b1d1b; --muted: #5d625e; --line: #dfe3df;
@@ -19,6 +19,7 @@
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
 main { max-width: 880px; margin: 0 auto; padding: 28px 16px 64px; }
 header { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
@@ -47,6 +48,7 @@ code { background: var(--code); padding: 1px 6px; border-radius: 6px; overflow-w
 .opt .hint { display: block; color: var(--muted); font-size: 14px; }
 .logo-choice { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0 0 32px; font-size: 15px; }
 .logo-choice input { accent-color: var(--accent); }
+.text { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font: inherit; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 14px; background: var(--card); color: var(--ink); width: 180px; max-width: 100%; }
 .preview { margin: 14px 0 0 32px; }
 .preview canvas { width: 100%; max-width: 480px; aspect-ratio: 4 / 3; image-rendering: pixelated; border-radius: 10px; border: 6px solid #2b2b2b; background: var(--screen); display: block; }
 .btn { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 12px; padding: 13px 20px; font-family: inherit; font-weight: 700; font-size: 16px; line-height: 1; background: var(--accent); color: var(--accent-ink); cursor: pointer; text-decoration: none; }
@@ -68,21 +70,20 @@ a { color: var(--accent); }
 <main>
   <header>
     <div>
-      <div class="muted mono">TSC Alpha-40L · M2.01.002 EZC</div>
-      <h1 data-i="title">Bluetooth fix for TSC Alpha‑40L</h1>
+      <div class="muted mono">TSC Alpha-40L · Alpha-30L · M2.01.002 EZC</div>
+      <h1 data-i="title">Bluetooth fix for TSC Alpha‑40L / 30L</h1>
     </div>
     <div class="lang" role="group" aria-label="Language">
       <button type="button" data-lang="en" aria-pressed="true">EN</button>
       <button type="button" data-lang="ru" aria-pressed="false">RU</button>
     </div>
   </header>
-  <p class="lead" data-i="lead">After the update to M2.01.002 the printer pairs over Bluetooth but prints nothing: the firmware drives the Bluetooth module at 1&nbsp;000&nbsp;000 baud while the module works at 115&nbsp;200. This page fixes TSC's official firmware file — on your computer, nothing is uploaded.</p>
+  <p class="lead" data-i="lead">After the update to M2.01.002 the printer pairs over Bluetooth but prints nothing. On the Alpha-40L the firmware talks to the Bluetooth module at the wrong speed, and the module's own speed differs from printer to printer. On some printers the mode is simply left at Bluetooth LE only. This page fixes TSC's official firmware file — on your computer, nothing is uploaded.</p>
 
   <section class="card">
     <h2><span class="num">1</span><span data-i="s1">Get the official firmware</span></h2>
-    <p data-i="s1t">Download it from TSC: tscprinters.com → Support → Downloads → Alpha-40L → Firmware. You need exactly this file:</p>
-    <p><code>ALPHA40L_EZC_M2.01.002.NEW</code> · 3&nbsp;604&nbsp;516 <span data-i="bytes">bytes</span><br>
-    <span class="muted">SHA-256</span> <code>152e5a55a991e8e3f0466eedc9c6a5ae850e2eac0b788e953fe66ef8d3f63329</code></p>
+    <p data-i="s1t">Download it from TSC: tscprinters.com → Support → Downloads → your model → Firmware. You need exactly one of these files:</p>
+    <div id="officials"></div>
   </section>
 
   <section class="card">
@@ -99,7 +100,15 @@ a { color: var(--accent); }
     <h2><span class="num">3</span><span data-i="s3">Choose what to include</span></h2>
     <div class="opt">
       <input type="checkbox" id="fix" checked disabled>
-      <label for="fix"><strong data-i="o1">Bluetooth fix</strong><span class="hint" data-i="o1h">3 bytes of code: the module is opened at 115 200 baud, as it is configured. Always on.</span></label>
+      <label for="fix"><strong data-i="o1">Bluetooth fix</strong><span class="hint" id="fixHint" data-i="o1h">A few bytes of code: the module is opened at the speed it is configured for. Always on.</span></label>
+    </div>
+    <div class="opt" id="speedBox" hidden>
+      <div style="flex:1">
+        <strong data-i="sp">Speed of the Bluetooth module</strong>
+        <span class="hint" data-i="sph">Two printers of the same model can have the module set to different speeds. With the wrong one the printer receives garbage. To find yours, send <code>OUT PEEK32(547429728)</code> over USB (or run <code>tools/tsc_usb.py info</code>) and paste the number:</span>
+        <p style="margin:8px 0"><input id="peek" class="text" inputmode="numeric" autocomplete="off" placeholder="3205173505" aria-label="PEEK32 answer"> <span id="peekOut" class="muted"></span></p>
+        <div class="logo-choice" style="margin-left:0" id="speedChoice"></div>
+      </div>
     </div>
     <div class="opt">
       <input type="checkbox" id="dual" checked>
@@ -114,7 +123,8 @@ a { color: var(--accent); }
       <label><input type="radio" name="logoSrc" value="own"> <span data-i="lo">My image</span></label>
       <input type="file" id="logoFile" accept="image/*,.bmp" hidden>
     </div>
-    <div class="preview" id="previewBox"><canvas id="preview" width="320" height="240" aria-label="Printer screen preview"></canvas></div>
+    <div class="preview" id="previewBox"><canvas id="preview" width="320" height="240" aria-label="Printer screen preview"></canvas>
+      <p class="muted" id="logoHint" data-i="l30" hidden>The IP address line covers the logo below row 107: use the Marker logo made for this model.</p></div>
   </section>
 
   <section class="card">
@@ -132,7 +142,8 @@ a { color: var(--accent); }
       <li data-i="w1">Windows: TSC DiagTool → File Manager → file type “Firmware File” → Download. Or printer driver → Printer properties → Tools → Send File To Printer.</li>
       <li data-i="w2">macOS / Linux: <code>python3 tools/tsc_usb.py send FILE</code> from this repository.</li>
       <li data-i="w3">The printer checks the file, writes it and restarts by itself (about 20 seconds). Do not turn it off.</li>
-      <li data-i="w4">Check: send <code>OUT PEEK32(539941872)</code> — the fixed firmware answers <code>3818916103</code>.</li>
+      <li id="check" data-i="w4">Check: after the restart send the command below; the fixed printer answers the number next to it.</li>
+      <li data-i="w5">Flashing puts the Bluetooth mode back to BT4.0 (LE only). If you print over Bluetooth Classic, set Dual once more: <code>BT MODE Dual</code> and restart (or <code>tools/tsc_usb.py btmode Dual</code>).</li>
     </ul>
     <div class="shots">
       <figure><img src="assets/screen-ready.png" alt="Original home screen"><figcaption data-i="f1">Before: “Ready”, Bluetooth prints nothing</figcaption></figure>
@@ -141,23 +152,30 @@ a { color: var(--accent); }
   </section>
 
   <footer>
-    <p data-i="foot">Tested on an Alpha-40L with a BM78 Bluetooth module (check: <code>OUT GETSETTING$("CONFIG","BT","MODULE")</code> → <code>BM78 MFi</code>). Alpha-30L has the same bug; its patch is being tested. Not affiliated with TSC. The firmware belongs to TSC and is not hosted here. Use at your own risk.</p>
+    <p data-i="foot">Tested on two Alpha-40L with BM78 modules (115 200 and 921 600) and on an Alpha-30L with an xPico270 module (no firmware change there, only the mode and the logo). Check your module: <code>OUT GETSETTING$("CONFIG","BT","MODULE")</code>. Not affiliated with TSC. The firmware belongs to TSC and is not hosted here. Use at your own risk.</p>
     <p><a href="https://github.com/AndreyyB5/tsc-alpha-bluetooth-fix">GitHub</a> · <a href="https://github.com/AndreyyB5/tsc-alpha-bluetooth-fix/blob/main/docs/technical.md" data-i="tech">How it was found</a> · MIT</p>
   </footer>
 </main>
 
 <script type="module">
-import { sha256Hex, findPatch, applyEdits, checkBmp, bmpFromRGBA, build, LOGO_SIZE, SCREEN_BG } from './patcher.mjs';
+import { sha256Hex, findPatch, applyEdits, checkBmp, bmpFromRGBA, build, coveredRows, moduleCode, variantsFor, variantForCode, LOGO_SIZE, SCREEN_BG } from './patcher.mjs';
 
 const RU = {
-  title: 'Починка Bluetooth для TSC Alpha‑40L',
-  lead: 'После обновления до M2.01.002 принтер сопрягается по Bluetooth, но ничего не печатает: прошивка открывает модуль Bluetooth на 1 000 000 бод, а модуль работает на 115 200. Эта страница исправляет официальный файл прошивки TSC прямо на вашем компьютере, ничего никуда не загружается.',
+  title: 'Починка Bluetooth для TSC Alpha‑40L / 30L',
+  lead: 'После обновления до M2.01.002 принтер сопрягается по Bluetooth, но ничего не печатает. У Alpha-40L прошивка говорит с модулем Bluetooth не на той скорости, а сам модуль у каждого принтера может быть настроен по-своему. У части принтеров просто остаётся режим «только Bluetooth LE». Страница исправляет официальный файл прошивки TSC прямо на вашем компьютере, ничего никуда не загружается.',
   s1: 'Скачайте официальную прошивку',
-  s1t: 'С сайта TSC: tscprinters.com → Support → Downloads → Alpha-40L → Firmware. Нужен именно этот файл:',
+  s1t: 'С сайта TSC: tscprinters.com → Support → Downloads → ваша модель → Firmware. Нужен один из этих файлов:',
   bytes: 'байт',
   s2: 'Откройте его здесь', drop: 'Перетащите сюда файл .NEW или нажмите, чтобы выбрать', local: 'Файл остаётся на этом компьютере.',
   s3: 'Что включить в файл',
-  o1: 'Починка Bluetooth', o1h: '3 байта кода: модуль открывается на 115 200 бод, как он настроен. Включено всегда.',
+  o1: 'Починка Bluetooth', o1h: 'Несколько байт кода: модуль открывается на той скорости, на которую он настроен. Включено всегда.',
+  o1no: 'Для этой модели менять байты прошивки не нужно: модуль Bluetooth другой (xPico270), его скорость верная. В файл попадут только режим Dual и логотип.',
+  sp: 'Скорость модуля Bluetooth', sph: 'У двух одинаковых принтеров модуль может быть настроен на разные скорости. С неверной принтер получает мусор. Чтобы узнать свою, отправьте по USB <code>OUT PEEK32(547429728)</code> (или запустите <code>tools/tsc_usb.py info</code>) и вставьте число:',
+  spCode: (c, v) => v ? `код ${c}: ${v}` : `код ${c}: такого варианта нет`, spBad: 'это не число из ответа принтера',
+  w5: 'После прошивки режим Bluetooth снова станет BT4.0 (только LE). Если печатаете по обычному Bluetooth, включите Dual ещё раз: <code>BT MODE Dual</code> и перезапуск (или <code>tools/tsc_usb.py btmode Dual</code>).',
+  chk: (c, f) => `Проверка: после перезапуска отправьте <code>${c}</code> — исправленный принтер отвечает <code>${f}</code>.`,
+  l30: 'Нижняя полоса с IP-адресом закрывает логотип ниже 107-й строки: возьмите «Логотип Marker» для этой модели.',
+  nothing: 'Для этой модели выберите хотя бы режим Dual или логотип: сама прошивка не меняется.',
   o2: 'Bluetooth в режиме Dual', o2h: 'Обычный Bluetooth и Bluetooth LE одновременно (приложениям на iPhone нужен LE). В меню принтера можно выбрать только один из них, Dual включается командой.',
   o3: 'Логотип на главном экране вместо «Ready»', o3h: 'Хранится как /system/LOGO.LCD, слово состояния больше не показывается. Убрать: KILL S,"LOGO.LCD".',
   lm: 'Логотип Marker', lo: 'Своя картинка',
@@ -167,21 +185,27 @@ const RU = {
   w1: 'Windows: TSC DiagTool → File Manager → тип файла «Firmware File» → Download. Или драйвер принтера → Свойства принтера → Tools → Send File To Printer.',
   w2: 'macOS / Linux: <code>python3 tools/tsc_usb.py send ФАЙЛ</code> из этого репозитория.',
   w3: 'Принтер проверит файл, запишет его и сам перезагрузится (около 20 секунд). Не выключайте его.',
-  w4: 'Проверка: отправьте <code>OUT PEEK32(539941872)</code> — исправленная прошивка отвечает <code>3818916103</code>.',
+  w4: 'Проверка: команда и ответ появятся после выбора файла.',
   f1: 'До: «Ready», по Bluetooth ничего не печатается', f2: 'После: Bluetooth работает, на экране логотип (настоящий снимок)',
-  foot: 'Проверено на Alpha-40L с модулем Bluetooth BM78 (проверка: <code>OUT GETSETTING$("CONFIG","BT","MODULE")</code> → <code>BM78 MFi</code>). У Alpha-30L та же ошибка, её правка проверяется. Проект не связан с TSC. Прошивка принадлежит TSC и здесь не хранится. Используйте на свой риск.',
+  foot: 'Проверено на двух Alpha-40L с модулями BM78 (115 200 и 921 600) и на Alpha-30L с модулем xPico270 (там прошивка не меняется, только режим и логотип). Какой модуль у вас: <code>OUT GETSETTING$("CONFIG","BT","MODULE")</code>. Проект не связан с TSC. Прошивка принадлежит TSC и здесь не хранится. Используйте на свой риск.',
   tech: 'Как это нашли',
   ok: (p) => `Официальный файл ${p.model} ${p.firmware} — подходит.`,
   fixed: 'Этот файл уже исправлен. Возьмите официальный файл TSC.',
-  unknown: (sha) => `Неизвестный файл (SHA-256 ${sha}). Нужен официальный ALPHA40L_EZC_M2.01.002.NEW.`,
+  unknown: (sha) => `Неизвестный файл (SHA-256 ${sha}). Нужен официальный файл из списка.`,
   badlogo: (e) => `Картинка не подошла: ${e}`,
 };
 const EN = {};
 document.querySelectorAll('[data-i]').forEach((el) => { EN[el.dataset.i] = el.innerHTML; });
 Object.assign(EN, {
+  bytes: 'bytes',
   ok: (p) => `Official ${p.model} ${p.firmware} file — supported.`,
   fixed: 'This file is already fixed. Use the official TSC file.',
-  unknown: (sha) => `Unknown file (SHA-256 ${sha}). You need the official ALPHA40L_EZC_M2.01.002.NEW.`,
+  unknown: (sha) => `Unknown file (SHA-256 ${sha}). You need one of the official files in the list.`,
+  o1no: 'This model needs no change in the firmware bytes: its Bluetooth module is different (xPico270) and its speed is right. The file gets only the Dual mode and the logo.',
+  spCode: (c, v) => v ? `code ${c}: ${v}` : `code ${c}: there is no variant for it`, spBad: 'not a number from the printer',
+  chk: (c, f) => `Check: after the restart send <code>${c}</code> — the fixed printer answers <code>${f}</code>.`,
+  l30: 'The IP address line covers the logo below row 107: use the Marker logo made for this model.',
+  nothing: 'For this model choose at least the Dual mode or the logo: the firmware itself does not change.',
   badlogo: (e) => `This image does not work: ${e}`,
 });
 let T = EN;
@@ -192,12 +216,13 @@ function setLang(lang) {
   document.querySelectorAll('[data-lang]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
   try { localStorage.setItem('lang', lang); } catch {}
   showStatus();
+  if (firmware) showModel();
 }
 document.querySelectorAll('[data-lang]').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang)));
 
 const $ = (id) => document.getElementById(id);
 let patches = [];
-let firmware = null; let firmwareName = '';
+let firmware = null; let firmwareName = '';   // firmware: { bytes, patch (chosen variant), variants }
 let status = null;
 let logoBmp = null;
 
@@ -212,6 +237,29 @@ function showStatus() {
 async function loadPatches() {
   const index = await (await fetch('patches/index.json')).json();
   patches = await Promise.all(index.patches.map(async (n) => (await fetch(`patches/${n}`)).json()));
+  const seen = new Set();
+  $('officials').innerHTML = patches.filter((p) => !seen.has(p.input.sha256) && seen.add(p.input.sha256)).map((p) =>
+    `<p><code>${p.official_file}</code> · ${p.model} · ${p.input.size.toLocaleString('ru-RU')} <span data-i="bytes">${T.bytes || 'bytes'}</span><br><span class="muted">SHA-256</span> <code>${p.input.sha256}</code></p>`).join('');
+}
+
+// Which variant the visitor wants: the module speed, only for models that have more than one.
+function speedChanged() {
+  if (!firmware) return;
+  const v = document.querySelector('input[name="speed"]:checked');
+  firmware.patch = (v && firmware.variants.find((p) => p.variant === v.value)) || firmware.variants[0];
+  showModel();
+}
+function showModel() {
+  const many = firmware.variants.length > 1;
+  $('speedBox').hidden = !many;
+  $('fixHint').textContent = firmware.patch.change ? T.o1h.replace(/<[^>]+>/g, '') + (many ? ` (${firmware.patch.variant})` : '') : T.o1no;
+  $('check').innerHTML = T.chk(firmware.patch.check.command, firmware.patch.check.fixed);
+  useLogoForModel();
+}
+function buildSpeedChoice() {
+  $('speedChoice').innerHTML = firmware.variants.map((p, i) =>
+    `<label><input type="radio" name="speed" value="${p.variant}" ${i === 0 ? 'checked' : ''}> ${p.module.baud.toLocaleString('ru-RU')} (${p.module.speed_code})</label>`).join('');
+  document.querySelectorAll('input[name="speed"]').forEach((r) => r.addEventListener('change', speedChanged));
 }
 
 async function openFirmware(file) {
@@ -222,9 +270,14 @@ async function openFirmware(file) {
   firmware = null;
   if (!hit) status = { kind: 'bad', key: 'unknown', arg: sha };
   else if (hit.state === 'fixed') status = { kind: 'warn', key: 'fixed' };
-  else { firmware = { bytes, patch: hit.patch }; firmwareName = file.name; status = { kind: 'ok', key: 'ok', arg: hit.patch }; }
+  else {
+    const variants = variantsFor(sha, patches);
+    firmware = { bytes, patch: variants[0], variants }; firmwareName = file.name; status = { kind: 'ok', key: 'ok', arg: hit.patch };
+    if (variants.length > 1) buildSpeedChoice();
+  }
   showStatus();
   $('build').disabled = !firmware;
+  if (firmware) showModel();
 }
 
 const drop = $('drop');
@@ -233,8 +286,25 @@ drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.ad
 drop.addEventListener('dragleave', () => drop.classList.remove('over'));
 drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) openFirmware(e.dataTransfer.files[0]); });
 
+$('peek').addEventListener('input', (e) => {
+  const code = moduleCode(e.target.value);
+  const out = $('peekOut');
+  if (e.target.value.trim() === '') { out.textContent = ''; return; }
+  if (code === null) { out.textContent = T.spBad; return; }
+  const hit = firmware && variantForCode(code, firmware.variants);
+  const hex = '0x' + code.toString(16).padStart(2, '0');
+  out.textContent = T.spCode(hex, hit && hit.module.baud.toLocaleString('ru-RU'));
+  if (hit) { document.querySelector(`input[name="speed"][value="${hit.variant}"]`).checked = true; speedChanged(); }
+});
+
 // Logo: the printer centres it horizontally at x = 160 and puts its top at y = 60.
 const screenImg = new Image(); screenImg.src = 'assets/screen.png';
+const screens = { 'assets/screen.png': screenImg };
+function screenFor() {
+  const file = (firmware && firmware.patch.screen_file) || 'assets/screen.png';
+  if (!screens[file]) { screens[file] = new Image(); screens[file].onload = () => drawPreview(); screens[file].src = file; }
+  return screens[file];
+}
 async function imageToBmp(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   try { checkBmp(bytes); return bytes; } catch {}
@@ -242,10 +312,11 @@ async function imageToBmp(file) {
   const c = document.createElement('canvas'); c.width = LOGO_SIZE.width; c.height = LOGO_SIZE.height;
   const g = c.getContext('2d');
   g.fillStyle = `rgb(${SCREEN_BG.join(',')})`; g.fillRect(0, 0, c.width, c.height);
-  const k = Math.min(304 / img.width, 130 / img.height);
+  const rows = logoRows();
+  const k = Math.min(304 / img.width, (rows - 8) / img.height);
   const w = Math.round(img.width * k); const h = Math.round(img.height * k);
   g.imageSmoothingQuality = 'high';
-  g.drawImage(img, Math.round((c.width - w) / 2), Math.round((c.height - h) / 2), w, h);
+  g.drawImage(img, Math.round((c.width - w) / 2), rows < c.height ? 4 : Math.round((c.height - h) / 2), w, h);
   return bmpFromRGBA(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
 }
 function bmpToCanvas(bmp) {
@@ -259,16 +330,33 @@ function bmpToCanvas(bmp) {
   }
   g.putImageData(d, 0, 0); return c;
 }
+// Rows of the 138-row logo that stay visible on this model (the Alpha-30L shows its IP address under them).
+function logoRows() { return (firmware && firmware.patch.logo_rows) || LOGO_SIZE.height; }
 function drawPreview() {
   const g = $('preview').getContext('2d');
   g.imageSmoothingEnabled = false;
-  if (screenImg.complete) g.drawImage(screenImg, 0, 0);
+  const screen = screenFor();
+  if (screen.complete) g.drawImage(screen, 0, 0);
   const on = $('logo').checked && logoBmp;
   if (on) { const c = bmpToCanvas(logoBmp); g.drawImage(c, Math.round(160 - c.width / 2), 60); }
   else { g.fillStyle = '#fff'; g.font = '34px -apple-system, Arial, sans-serif'; g.textAlign = 'center'; g.fillText('Ready', 160, 134); }
+  const rows = logoRows();
+  const covered = Boolean(on && rows < LOGO_SIZE.height && coveredRows(logoBmp, rows));
+  if (rows < LOGO_SIZE.height) {            // the Alpha-30L draws its IP address over the bottom of the home screen
+    g.fillStyle = `rgb(${SCREEN_BG.join(',')})`; g.fillRect(0, 60 + rows, 320, 200 - 60 - rows);
+    g.fillStyle = '#fff'; g.font = '14px -apple-system, Arial, sans-serif'; g.textAlign = 'center'; g.fillText('192.168.0.10', 160, 188);
+  }
+  $('logoHint').hidden = !covered;
 }
 screenImg.onload = drawPreview;
-async function useMarkerLogo() { logoBmp = new Uint8Array(await (await fetch('assets/marker-logo.bmp')).arrayBuffer()); drawPreview(); }
+async function useMarkerLogo() {
+  const file = (firmware && firmware.patch.logo_file) || 'assets/marker-logo.bmp';
+  logoBmp = new Uint8Array(await (await fetch(file)).arrayBuffer()); drawPreview();
+}
+async function useLogoForModel() {
+  if (document.querySelector('input[name="logoSrc"]:checked').value === 'marker') await useMarkerLogo();
+  else drawPreview();
+}
 document.querySelectorAll('input[name="logoSrc"]').forEach((r) => r.addEventListener('change', () => {
   if (r.value === 'own' && r.checked) $('logoFile').click();
   if (r.value === 'marker' && r.checked) useMarkerLogo();
@@ -281,13 +369,14 @@ $('logoFile').addEventListener('change', async (e) => {
 $('logo').addEventListener('change', () => { $('logoChoice').style.opacity = $('logo').checked ? 1 : .4; drawPreview(); });
 
 $('build').addEventListener('click', async () => {
+  if (!firmware.patch.change && !$('dual').checked && !$('logo').checked) { status = { kind: 'warn', key: 'nothing' }; showStatus(); return; }
   const fixed = applyEdits(firmware.bytes, firmware.patch);
   const sha = await sha256Hex(fixed);
   if (sha !== firmware.patch.output.sha256) throw new Error('result does not match the tested file');
   const out = build({ firmware: fixed, dual: $('dual').checked, logo: $('logo').checked ? logoBmp : null });
   const url = URL.createObjectURL(new Blob([out], { type: 'application/octet-stream' }));
   const a = $('download'); a.href = url;
-  a.download = firmwareName.replace(/\.new$/i, '') + '_BTFIX.NEW';
+  a.download = firmwareName.replace(/\.new$/i, '') + `_${firmware.patch.suffix}.NEW`;
   $('outsha').textContent = sha;
   $('result').classList.add('show');
 });

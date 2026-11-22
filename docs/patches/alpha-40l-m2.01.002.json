@@ -2,7 +2,18 @@
   "id": "alpha-40l-m2.01.002",
   "model": "TSC Alpha-40L",
   "firmware": "M2.01.002 EZC",
+  "variant": "115200",
   "official_file": "ALPHA40L_EZC_M2.01.002.NEW",
+  "suffix": "BTFIX",
+  "module": {
+    "name": "BM78",
+    "speed_code": "0x03",
+    "baud": 115200
+  },
+  "module_check": {
+    "command": "OUT PEEK32(547429728)",
+    "byte": 1
+  },
   "input": {
     "size": 3604516,
     "sha256": "152e5a55a991e8e3f0466eedc9c6a5ae850e2eac0b788e953fe66ef8d3f63329"
